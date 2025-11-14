@@ -10,6 +10,7 @@ from datetime import datetime
 import asyncio
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+import threading
 
 # -------------------------------
 # Serial connection to Arduino
@@ -160,73 +161,28 @@ update_data()
 # ================================
 TOKEN = "7978466946:AAF4gBpJRY0ZKFHVEE0l0lDUAU_JpVq30h8"
 
-# Languages dictionary
 LANGUAGES = {
-    "English": {
-        "start": "Welcome to SmartCounterBot! Please select a language:",
-        "light": "Light",
-        "gas": "Gas",
-        "water": "Water",
-        "usage": "Usage since last payment",
-        "cost": "Cost",
-        "last_payment": "Last payment",
-        "full_status": "Full Status",
-        "total_cost": "Total cost"
-    },
-    "Russian": {
-        "start": "Добро пожаловать в SmartCounterBot! Пожалуйста, выберите язык:",
-        "light": "Свет",
-        "gas": "Газ",
-        "water": "Вода",
-        "usage": "Использовано с последней оплаты",
-        "cost": "Стоимость",
-        "last_payment": "Последняя оплата",
-        "full_status": "Общий статус",
-        "total_cost": "Общая стоимость"
-    },
-    "Azerbaijani": {
-        "start": "SmartCounterBot-a xoş gəlmisiniz! Zəhmət olmasa dili seçin:",
-        "light": "İşıq",
-        "gas": "Qaz",
-        "water": "Su",
-        "usage": "Son ödənişdən bəri istifadə",
-        "cost": "Qiymət",
-        "last_payment": "Son ödəniş",
-        "full_status": "Ümumi vəziyyət",
-        "total_cost": "Ümumi məbləğ"
-    },
-    "Turkish": {
-        "start": "SmartCounterBot'a hoş geldiniz! Lütfen bir dil seçin:",
-        "light": "Işık",
-        "gas": "Gaz",
-        "water": "Su",
-        "usage": "Son ödemeden beri kullanım",
-        "cost": "Maliyet",
-        "last_payment": "Son ödeme",
-        "full_status": "Genel Durum",
-        "total_cost": "Toplam maliyet"
-    }
+    "English": {"start":"Welcome to SmartCounterBot! Select a language:", "light":"Light","gas":"Gas","water":"Water","usage":"Usage since last payment","cost":"Cost","last_payment":"Last payment","full_status":"Full Status","total_cost":"Total cost"},
+    "Russian": {"start":"Добро пожаловать в SmartCounterBot! Выберите язык:","light":"Свет","gas":"Газ","water":"Вода","usage":"Использовано с последней оплаты","cost":"Стоимость","last_payment":"Последняя оплата","full_status":"Общий статус","total_cost":"Общая стоимость"},
+    "Azerbaijani": {"start":"SmartCounterBot-a xoş gəlmisiniz! Zəhmət olmasa dili seçin:","light":"İşıq","gas":"Qaz","water":"Su","usage":"Son ödənişdən bəri istifadə","cost":"Qiymət","last_payment":"Son ödəniş","full_status":"Ümumi vəziyyət","total_cost":"Ümumi məbləğ"},
+    "Turkish": {"start":"SmartCounterBot'a hoş geldiniz! Lütfen bir dil seçin:","light":"Işık","gas":"Gaz","water":"Su","usage":"Son ödemeden beri kullanım","cost":"Maliyet","last_payment":"Son ödeme","full_status":"Genel Durum","total_cost":"Toplam maliyet"}
 }
 
-# Keep user language selections
 user_lang = {}
 
-# Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [["English", "Russian"], ["Azerbaijani", "Turkish"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("Welcome! Select your language / Добро пожаловать! Выберите язык / Xoş gəlmisiniz! Dili seçin / Hoşgeldiniz! Dili seçin:", reply_markup=reply_markup)
+    await update.message.reply_text("Welcome! Select your language:", reply_markup=reply_markup)
 
-# Set language based on user message
 async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = update.message.text
     if lang in LANGUAGES:
         user_lang[update.effective_user.id] = lang
         await update.message.reply_text(LANGUAGES[lang]["start"] + "\nUse commands: /light /gas /water /status_all")
     else:
-        await update.message.reply_text("Invalid selection. Please choose language from keyboard.")
+        await update.message.reply_text("Invalid selection. Choose language from keyboard.")
 
-# Helper to format message in user language
 def format_status(sensor):
     uid = sensor.effective_user.id
     lang = user_lang.get(uid, "English")
@@ -248,36 +204,33 @@ def format_status(sensor):
         cost = {"light": total_light, "gas": total_gas, "water": total_water}[key]
         return f"{d[key]}:\nValue: {val}\n{d['usage']}: {usage:.2f}\n{d['cost']}: {cost:.2f} ₼\n{d['last_payment']}: {payment_info}"
 
-# Command handlers
 async def light_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(format_status(update))
-
 async def gas_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(format_status(update))
-
 async def water_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(format_status(update))
-
 async def status_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(format_status(update))
 
 # -------------------------------
-# Start Telegram bot in separate loop
+# Start Telegram bot in separate thread
 # -------------------------------
-async def start_bot():
+def run_bot():
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("light", light_status))
     app.add_handler(CommandHandler("gas", gas_status))
     app.add_handler(CommandHandler("water", water_status))
     app.add_handler(CommandHandler("status_all", status_all))
-    # Message handler for language selection
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_language))
-    await app.run_polling()
+    loop.run_until_complete(app.run_polling())
 
-# Run Telegram bot in background
-import threading
-threading.Thread(target=lambda: asyncio.run(start_bot()), daemon=True).start()
+threading.Thread(target=run_bot, daemon=True).start()
 
 # Start GUI mainloop
 root.mainloop()
