@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 import threading
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
 # ===========================
 # ==== Arduino Setup =======
@@ -193,7 +193,8 @@ app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("status", status))
 app.add_handler(CommandHandler("language", set_language))
-app.add_handler(CommandHandler("lang", change_language))
+# Catch language selection messages
+app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), change_language))
 
 def run_bot():
     app.run_polling()
