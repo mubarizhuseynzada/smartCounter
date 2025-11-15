@@ -1,7 +1,8 @@
 # ===============================
 # SmartCounter + Telegram Bot with multilingual support
 # ===============================
-
+from data_io 
+import write_status, append_payment
 import serial
 import time
 import tkinter as tk
